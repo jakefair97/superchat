@@ -1,11 +1,13 @@
 import './App.css';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getFirestore, collection, doc, getDocs, orderBy, query, limit} from "firebase/firestore"
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut} from 'firebase/auth';
+import { getFirestore, collection, addDoc, doc, getDocs, orderBy, query, limit, serverTimestamp} from "firebase/firestore"
 
 import { useCollectionData } from 'react-firebase-hooks/firestore';
+import { useAuthState } from 'react-firebase-hooks/auth'
 
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
@@ -26,17 +28,21 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const db = getFirestore(app)
+const auth = getAuth();
 
 function App() {
-
+  
+  const [user] = useAuthState(auth);
+  
   return (
     <div className='App'>
       <header>
-
+        <SignOut />
       </header>
 
       <section>
-        <ChatRoom />
+        {user? <ChatRoom /> : <SignIn/> }
+
       </section>
 
     </div>
@@ -45,20 +51,45 @@ function App() {
 
 function SignIn() {
   const signInWithGoogle = () => {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider);
+    const provider = new GoogleAuthProvider();
+    signInWithPopup(auth, provider)
+    .then((result) => {
+      // This gives you a Google Access Token. You can use it to access the Google API.
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const token = credential.accessToken;
+      // The signed-in user info.
+      const user = result.user;
+      // IdP data available using getAdditionalUserInfo(result)
+      // ...
+    }).catch((error) => {
+      // Handle Errors here.
+      const errorCode = error.code;
+      const errorMessage = error.message;
+      // The email of the user's account used.
+      const email = error.customData.email;
+      // The AuthCredential type that was used.
+      const credential = GoogleAuthProvider.credentialFromError(error);
+      // ...
+    });
   }
 
   return (
     <>
-      <button className="sign-in" onClick={signInWithGoogle}>Sign in with Google</button>
+      <button onClick={signInWithGoogle}>Sign in with Google</button>
       <p>Do not violate the community guidelines or you will be banned for life!</p>
     </>
   )
 
 }
 
+function SignOut() {
+  return auth.currentUser && (
+    <button onClick={() => signOut(auth)}>Sign Out</button>
+  )
+}
+
 function ChatRoom() {
+  const dummy = useRef();
   const messageRef = collection(db, "messages");
   const q = query(messageRef, orderBy('createdAt'), limit(25));
 
@@ -69,13 +100,27 @@ function ChatRoom() {
   const sendMessage = async(e) => {
     e.preventDefault();
 
+    const {uid} = auth.currentUser;
+
+    await addDoc(messageRef, {
+      text: formValue,
+      createdAt: serverTimestamp(),
+      uid
+    })
+
+    setFormValue('');
+
+    dummy.current.scrollIntoView({ behavior:'smooth' });
   }
 
   return (
     <>
-      <div>
+      <main>
         {messages && messages.map(msg => <ChatMessage key={msg.id} message ={msg} />)}
-      </div>
+
+        <div ref={dummy}></div>
+      </main>
+
 
       <form onSubmit={sendMessage}>
         <input type="text" value={formValue} onChange={(e) => setFormValue(e.target.value)} />
@@ -87,13 +132,12 @@ function ChatRoom() {
 }
 
 function ChatMessage(props) {
-  const { text, uid, photoURL } = props.message;
+  const { text, uid } = props.message;
 
-  // const messageClass = uid === auth.current.uid ? 'sent' : 'received';
+  const messageClass = uid === auth.currentUser.uid ? 'sent' : 'received';
 
   return (
     <div className = {`message ${messageClass}`}>
-      <img src={photoURL} alt="user photo" />
       <p>{text}</p>
     </div> 
   )
