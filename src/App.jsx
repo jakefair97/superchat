@@ -38,6 +38,10 @@ function App() {
     <div className='App'>
       <header>
         <SignOut />
+
+        <div>
+          {user ? `Hello, ${user.displayName.split(" ")[0]}!` : ''}
+        </div>
       </header>
 
       <section>
